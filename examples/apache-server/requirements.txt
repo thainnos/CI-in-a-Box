@@ -1,0 +1,8 @@
+cffi==1.15.1
+cryptography==38.0.1
+nassl==4.0.2
+pycparser==2.21
+pydantic==1.8.2
+sslyze==5.0.6
+tls-parser==2.0.0
+typing_extensions==4.0.1

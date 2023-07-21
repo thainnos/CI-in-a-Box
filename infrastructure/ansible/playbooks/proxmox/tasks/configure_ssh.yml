@@ -1,0 +1,28 @@
+---
+- name: Ensure the dir for the authorized_keys file exists.
+  ansible.builtin.file:
+    path: /etc/pve/priv
+    state: directory
+    modification_time: preserve
+    access_time: preserve   
+
+- name: Ensure the authorized_keys file exists.
+  ansible.builtin.file:
+    path: /etc/pve/priv/authorized_keys
+    state: touch
+    modification_time: preserve
+    access_time: preserve    
+
+- name: Add the ssh public key for root.
+  ansible.builtin.lineinfile:
+    path: "/etc/pve/priv/authorized_keys"
+    line: "{{ ssh_public_key }}"
+
+- name: Disable passwordless login.
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^PasswordAuthentication"
+    line: "PasswordAuthentication no"
+    state: present
+    validate: "sshd -T -f %s"
+    

@@ -1,0 +1,9 @@
+<staticmap>
+    <mac>{{ ansible_default_ipv4["macaddress"] }}</mac>
+    <ipaddr>{{ ansible_default_ipv4["address"] }}</ipaddr>
+    <hostname>{{ hostname.stdout }}</hostname>
+    <descr>{{ hostname.stdout }} Server</descr>
+    <winsserver />
+    <dnsserver />
+    <ntpserver />
+</staticmap>

@@ -1,0 +1,66 @@
+---
+- name: Create the certificate and key.
+  ansible.builtin.include_tasks: create_certificate.yml
+
+- name: Make a directory for the keystore.
+  ansible.builtin.file:
+    path: /var/lib/jenkins/.keystore
+    state: directory
+    owner: jenkins
+    group: jenkins
+    modification_time: preserve
+    access_time: preserve
+  become: true
+
+- name: Copy the cert and key to the directory.
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/var/lib/jenkins/.keystore/{{ item }}"
+    owner: jenkins
+    group: jenkins
+    remote_src: true
+  with_items:
+    - crt.pem
+    - key.pem
+  become: true
+
+- ansible.builtin.set_fact:
+    keystore_pw: "{{ lookup('ansible.builtin.password', '/tmp/keystore_pw.txt length=40') }}"
+
+- name: Create a keystore.
+  community.general.java_keystore:
+    name: jenkins
+    certificate_path: /var/lib/jenkins/.keystore/crt.pem
+    private_key_path: /var/lib/jenkins/.keystore/key.pem
+    password: "{{ keystore_pw }}"
+    dest: /var/lib/jenkins/.keystore/keystore.jks
+  become: true
+
+# Since jenkins 2.332.1 changes to the /etc/default/jenkins
+# are ignored. The jenkins config is now updated with
+# systemctl edit. The following is a recreation of how
+# systemctl edit works.
+- name: Create jenkins.service.d directory
+  file:
+    path: /etc/systemd/system/jenkins.service.d/
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+  become: true
+
+- name: Template jenkins.service drop-in
+  template:
+    src: templates/jenkins.service.j2
+    dest: /etc/systemd/system/jenkins.service.d/override.conf
+    owner: root
+    group: root
+    mode: 0644
+  become: true
+
+- name: Restart service jenkins and reload daemon.
+  ansible.builtin.systemd:
+    state: restarted
+    daemon_reload: yes
+    name: jenkins
+  become: true

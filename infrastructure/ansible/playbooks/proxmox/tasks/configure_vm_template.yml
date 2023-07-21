@@ -1,0 +1,62 @@
+---
+- name: Check if template exists.
+  ansible.builtin.shell:
+    cmd: qm list | grep 9000
+  register: template_exists
+  failed_when: "template_exists.rc not in [ 0, 1 ]"
+  changed_when: false
+
+- name: Create the template.
+  block:
+    - name: Select default locale.
+      debconf:
+        name: locales
+        question: locales/default_environment_locale
+        value: en_US.UTF-8
+        vtype: select
+      register: locale_selected
+
+    - name: Update locale in /etc/locale.gen file.
+      lineinfile:
+        dest: /etc/locale.gen
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: "{{ item.state }}"
+      with_items:
+        - { regexp: '^#? ?de_DE ISO-8859-1', line: 'de_DE ISO-8859-1', state: present }
+        - { regexp: '^#? ?de_DE.UTF-8 UTF-8', line: 'de_DE.UTF-8 UTF-8', state: present }
+        - { regexp: '^#? ?de_DE@euro ISO-8859-15', line: 'de_DE@euro ISO-8859-15', state: present }
+        - { regexp: '^#? ?en_GB ISO-8859-1', line: 'en_GB ISO-8859-1', state: present }
+        - { regexp: '^#? ?en_GB.ISO-8859-15 ISO-8859-15', line: 'en_GB.ISO-8859-15 ISO-8859-15', state: present }
+        - { regexp: '^#? ?en_GB.UTF-8 UTF-8', line: 'en_GB.UTF-8 UTF-8', state: present }
+        - { regexp: '^#? ?en_US ISO-8859-1', line: 'en_US ISO-8859-1', state: present }
+        - { regexp: '^#? ?en_US.ISO-8859-15 ISO-8859-15', line: 'en_US.ISO-8859-15 ISO-8859-15', state: present }
+        - { regexp: '^#? ?en_US.UTF-8 UTF-8', line: 'en_US.UTF-8 UTF-8', state: present }
+      register: locale_file_updated
+      
+    - name: Rebuild locales database.
+      command: "{{ item }}"
+      with_items:
+        - dpkg-reconfigure locales -f noninteractive
+        - /usr/sbin/locale-gen
+      when: locale_file_updated.changed
+
+    - name: Apt updaten.
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: libguestfs-tools installieren.
+      ansible.builtin.apt:
+        name: "libguestfs-tools"
+        state: present
+
+    - name: Template the script for creating a cloud-init vm template.
+      ansible.builtin.template:
+        src: ./templates/generate-cloud-init-img.sh.j2
+        dest: ./scripts/generate-cloud-init-img.sh
+      delegate_to: localhost
+
+    - name: Execute shell script if template doesn't exist.
+      ansible.builtin.script:
+        cmd: "scripts/generate-cloud-init-img.sh"
+  when: template_exists.rc == 1

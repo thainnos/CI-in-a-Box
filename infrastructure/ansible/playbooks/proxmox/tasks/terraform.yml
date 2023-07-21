@@ -1,0 +1,40 @@
+- name: Ensure the directory exists
+  ansible.builtin.file:
+    path: "../../../terraform/{{ hostname }}"
+    state: directory
+  delegate_to: localhost
+
+- name: Template the terraform files into the directory.
+  ansible.builtin.template:
+    src: "./templates/{{ item }}.j2"
+    dest: "../../../terraform/{{ hostname }}/{{ item }}"
+  with_items:
+    - main.tf
+    - providers.tf
+    - vars.tf
+  delegate_to: localhost
+
+- block:
+    # This should only be done when the api token was created.
+    - name: Template the terraform secrets into the directory.
+      ansible.builtin.template:
+        src: "./templates/secrets.tfvars.j2"
+        dest: "../../../terraform/{{ hostname }}/secrets.tfvars"
+
+    - name: Initialize the terraform directory.
+      ansible.builtin.command:
+        cmd: terraform init
+        chdir: "../../../terraform/{{ hostname }}"
+  delegate_to: localhost
+  # user_has_token is defined by the configure_api_user.yml tasks. 
+  when: user_has_token is defined and user_has_token.rc == 1
+
+# Start the terraform automation.
+- name: Start the terraform automation.
+  ansible.builtin.command:
+    cmd: terraform apply -var-file=secrets.tfvars -auto-approve
+    chdir: "../../../terraform/{{ hostname }}"
+  delegate_to: localhost
+  register: terraform_automation
+  until: terraform_automation is not failed
+  retries: 5

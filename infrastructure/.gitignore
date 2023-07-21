@@ -1,0 +1,51 @@
+# Secrets
+*secrets*
+!secrets.tfvars.j2
+
+# Password Database
+*.kdbx
+
+# Python virtual environments
+venv/
+
+# Python Cache
+__pycache__/
+
+# VS Code stuff
+.vscode/
+
+# Terraform
+.terraform
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+
+# Latex
+*.aux
+*.glo
+*.idx
+*.log
+*.toc
+*.ist
+*.acn
+*.acr
+*.alg
+*.bbl
+*.blg
+*.dvi
+*.glg
+*.gls
+*.ilg
+*.ind
+*.lof
+*.lot
+*.maf
+*.mtc
+*.mtc1
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+# Vim
+*.swp
+

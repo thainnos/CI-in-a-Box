@@ -1,0 +1,64 @@
+---
+- name: Download the current router config.
+  ansible.builtin.fetch:
+    src: /conf/config.xml
+    dest: "./"
+    flat: yes
+  vars:
+    ansible_user: root
+    inventory_hostname: "{{ groups['router'][0] }}"
+    ansible_python_interpreter: /usr/local/bin/python3
+
+- name: Copy the script directory and its contents to the remote host.
+  ansible.builtin.copy:
+    src: ./script
+    dest: ./
+
+- name: Copy the config file to the remote host.
+  ansible.builtin.copy:
+    src: ./config.xml
+    dest: ./
+
+- name: Pip installation with fix for pyopenssl breaking pip on the second run.
+  block:
+    - name: Pip installation.
+      ansible.builtin.apt:
+        name: python3-pip
+        state: present
+        update_cache: yes   
+    
+  rescue:
+    - name: Remove the problematic line.
+      ansible.builtin.replace:
+        path: /usr/lib/python3/dist-packages/OpenSSL/crypto.py
+        regexp: '^\s+CB_ISSUER_CHECK ='
+        replace: "\t#CB_ISSUER_CHECK = _lib.X509_V_FLAG_CB_ISSUER_CHECK"
+
+    - name: Upgrade pip.
+      ansible.builtin.shell:
+        cmd: pip install pip --upgrade
+
+    - name: Upgrade pyopenssl.
+      ansible.builtin.shell:
+        cmd: pip install pyopenssl --upgrade
+  become: "{{ 'no' if ansible_user == 'root' else 'yes' }}"
+
+- name: Install the python requirements.
+  ansible.builtin.pip:
+    name: cryptography==38.0.1
+
+- name: Create a certificate and key.
+  ansible.builtin.shell:
+    cmd: 'python3 script/create_signed_certificate.py --common_name "{{ common_name }}" --comment "{{ comment }}" --hostname "{{ hostname }}" --ip_address "{{ ip_address }}" ./config.xml'
+
+- name: Delete the router config file on the remote host.
+  ansible.builtin.file:
+    path: ./config.xml
+    state: absent
+
+- name: Delete the router config file locally.
+  ansible.builtin.file:
+    path: ./config.xml
+    state: absent
+  delegate_to: localhost
+  become: false

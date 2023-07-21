@@ -1,0 +1,11 @@
+---
+- name: Create a new root password and save the root user.
+  include_role: 
+    name: local.create-user
+  vars:
+    group_name: "{{ hostname }}"
+    title: "proxmox root user"
+    username: "root"
+    icon: "12"
+    notes: "The root proxmox user."
+    create_os_user: true

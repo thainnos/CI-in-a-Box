@@ -1,0 +1,30 @@
+# Proxmox Variables
+variable "ssh_key" {
+  default = "{{ ssh_public_key }}"
+}
+
+variable "suffix" {
+  default = "-{{ suffix }}"
+}
+
+variable "proxmox_host" {
+  default = "{{ ip_addr | ansible.utils.ipaddr('address') }}"
+}
+
+variable "gateway" {
+  default = "{{ gateway }}"
+}
+
+variable "node" {
+  default = "{{ hostname }}"
+}
+
+variable "proxmox_user" {
+  # Set here or e.g. in secrets.tfvars and include the file with
+  # -var-file=secrets.tfvars
+  default = {
+    token_id = ""
+    token_secret = ""
+  }
+}
+

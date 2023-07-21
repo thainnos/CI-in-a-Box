@@ -1,0 +1,3 @@
+---
+- name: Configure the router.
+  import_playbook: playbooks/router/main.yml

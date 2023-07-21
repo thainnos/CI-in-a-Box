@@ -1,0 +1,247 @@
+pipeline {
+  agent any
+
+  stages {
+    stage("Setup") {
+      steps {
+        /*
+         * Retrieve archived certificates
+         */
+        // Retrieve the artifacts from the last successful pipeline execution.
+        copyArtifacts fingerprintArtifacts: true, 
+        projectName: env.JOB_NAME,
+        optional: 'True'
+        
+        /*
+         * Configure packages
+         */
+        sh (
+          script: 'sudo apt update',
+          label: "Update apt."
+        )
+
+        sh (
+          script: 'sudo apt install apache2 nmap openssl ca-certificates python3-pip python3-markdown -y',
+          label: "Install necessary packages."
+        )
+
+        sh (
+          script: '''
+            sudo chown jenkins:jenkins /home/jenkins/
+            pip install --upgrade pip setuptools wheel
+            pip install -r requirements.txt
+          ''',
+          label: "Install a python ssl scan tool"
+        )
+        
+        /*
+         * Configure certificate
+         */
+        // Get the ip address of the host for its certificate.
+        script {
+          IPADDR = sh (
+            script: "hostname -I | cut -d \' \' -f1",
+            returnStdout: true,
+            label: "Get the (external) ip address of the agent."
+          ).trim() 
+        }
+        // Create a certificate authority.
+        sh (
+          script: """
+            if (! ([ -e rootCA.key ])) || (! ([ -e rootCA.key ])) ; then 
+              openssl req -x509 \
+                -sha512 -days 356 \
+                -nodes \
+                -newkey rsa:4096 \
+                -subj '/C=DE/ST=Bavaria/L=Augsburg/O=HSA_innos/OU=CIinaBox/CN=ciinabox-apache-demo-ca' \
+                -keyout rootCA.key -out rootCA.crt;
+            fi
+          """,
+          label: "Create a certificate authority"
+        )
+        // Create a csr and server key.
+        sh (
+          script: """
+            if (! ([ -e server-${IPADDR}.key ])) || (! ([ -e server-${IPADDR}.pem ])) ; then 
+              openssl req -nodes -new \
+                -subj '/C=DE/ST=Bavaria/L=Augsburg/O=HSA_innos/OU=CIinaBox/CN=ciinabox-apache-demo' \
+                -newkey rsa:4096 \
+                -sha512 \
+                -keyout server-${IPADDR}.key -out server-${IPADDR}.csr;
+            fi
+          """,
+          label: "Create a Certificate Signing Request and a key for the server."
+        )
+        // Create an extfile for the cert.
+        sh (
+          script: """
+            if (! ([ -e server-${IPADDR}.pem ])) ; then 
+              echo 'basicConstraints=CA:FALSE
+  nsCertType=server
+  nsComment="CIinaBox Apache Server"
+  subjectKeyIdentifier=hash
+  authorityKeyIdentifier=keyid,issuer
+  extendedKeyUsage=serverAuth,1.3.6.1.5.5.8.2.2
+  keyUsage=digitalSignature,keyEncipherment
+  subjectAltName="IP:$IPADDR"
+            ' > extfile.cnf;
+            fi
+          """,
+          label: "Create an extfile for setting certificate values."
+        )
+        // Create the signed certificate.
+        sh (
+          script: """
+            if (! ([ -e server-${IPADDR}.pem ])) ; then 
+              openssl x509 -req -sha512 \
+                -days 356 \
+                -in server-${IPADDR}.csr \
+                -CA rootCA.crt \
+                -CAkey rootCA.key \
+                -out server-${IPADDR}.pem \
+                -extfile extfile.cnf -CAcreateserial;
+            fi
+          """,
+          label: "Create the signed certificate"
+        )
+        // Copy the ssl cert and key to where apache searchs for it.
+        sh (
+          script: "sudo cp server-${IPADDR}.pem /etc/ssl/certs/ssl-cert-test.pem",
+          label: "Copy the server certificate to the correct location."
+        )
+        sh (
+          script: "sudo cp server-${IPADDR}.key /etc/ssl/private/ssl-cert-test.key",
+          label: "Copy the server key to the correct location."
+        )
+        // Configure the user and group of the certificates.
+        sh (
+          script: "sudo chown root:root /etc/ssl/certs/ssl-cert-test.pem",
+          label: "Configure the user and group of the certificate."
+        )
+        sh (
+          script: "sudo chown root:root /etc/ssl/private/ssl-cert-test.key",
+          label: "Configure the user and group of the key."
+        )
+        // Add the root ssl certificate to the system store.
+        sh (
+          script: 'sudo cp rootCA.crt /usr/local/share/ca-certificates/ciinabox-ca.crt',
+          label: "Copy the root certificate to the location where update-ca-certifcates finds it."
+        )
+        sh (
+          script: 'sudo update-ca-certificates',
+          label: "Updated the system store certificates."
+        )
+
+        /*
+         * Archive the artifacts.
+         */
+        archiveArtifacts artifacts: 'rootCA.key', fingerprint: true
+        archiveArtifacts artifacts: 'rootCA.crt', fingerprint: true
+        archiveArtifacts artifacts: "server-${IPADDR}.key", fingerprint: true
+        archiveArtifacts artifacts: "server-${IPADDR}.pem", fingerprint: true
+        
+        /*
+         * Configure apache
+         */
+        sh (
+          script: "sudo cp website-ssl.conf /etc/apache2/sites-available",
+          label: "Add the configuration for the ssl site."
+        )
+        sh (
+          script: "sudo a2ensite website-ssl.conf",
+          label: "Enable the ssl site."
+        )
+        sh (
+          script: "sudo a2dissite 000-default.conf",
+          label: "Disable the default site."
+        )
+        sh (
+          script: "sudo cp ssl-params.conf /etc/apache2/conf-available",
+          label: "Add the configuration for ssl."
+        )
+        sh (
+          script: "sudo a2enconf ssl-params",
+          label: "Activate the ssl configuration."
+        )
+        sh (
+          script: "sudo a2enmod headers ssl",
+          label: "Activate the modules needed for ssl to work."
+        )
+        sh (
+          script: 'sudo cp ./apache2.conf /etc/apache2/apache2.conf',
+          label: "Update the primary apache configuration file."
+        )
+        sh (
+          script: 'sudo systemctl reload apache2.service',
+          label: "Restart apache with the updated config."
+        )
+      }
+    }
+
+    stage('Scan the ports and ssl config of the server.') {
+      steps {
+        // Run the scan as if the scanned device were another host.
+        sh (
+          script: 'nmap -p- -sV -oX general_portscan.xml "$(hostname -I | cut -d \' \' -f1)"',
+          label: "Run a general portscan on the external ip address."
+        )
+        
+        sh (
+          script: 'python3 -m sslyze --json_out sslyze.json --mozilla_config modern --quiet "$(hostname -I | cut -d \' \' -f1)" > sslyze.txt',
+          label: "Run a ssl scan tool against the apache server.",
+          returnStatus: true
+        )
+        
+        stash (
+          name: "nmap_reports",
+          includes: "general_portscan.xml,ssl_scan.xml,sslyze.txt,sslyze.json"
+        )
+      }
+    }
+
+    stage('Create and publish a report based on the scans.') {
+      steps {
+        unstash name: "nmap_reports"
+
+        sh (
+          script: 'python3 create_report.py > report/index.html',
+          label: "Create a report based on the data."
+        )
+
+        sh (
+          script: '''
+          if ! which wkhtmltopdf ; then
+          sudo apt install -y fontconfig xfonts-75dpi xfonts-base
+            wget -O wkhtmltop.deb \
+              https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
+            sudo dpkg -i wkhtmltop.deb
+          fi
+          ''',
+          label: "Install the tool to create a pdf.",
+          returnStatus: true
+        )
+
+        sh (
+          script: 'wkhtmltopdf --enable-local-file-access -T 20 -L 20 -R 20 -B 20 report/index.html report.pdf',
+          label: "Create the pdf."
+        )
+
+        /*
+         * Archive the report.
+         */
+        archiveArtifacts artifacts: 'report/index.html', fingerprint: true
+        archiveArtifacts artifacts: 'report.pdf', fingerprint: true
+
+        publishHTML (
+          target : [allowMissing: false,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: 'report',
+            reportFiles: 'index.html',
+            reportName: 'Sicherheitsreport',
+            reportTitles: 'Sicherheitsreport']
+        )
+      }
+    }
+  }
+}

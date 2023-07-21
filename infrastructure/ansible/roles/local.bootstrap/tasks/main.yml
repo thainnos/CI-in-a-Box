@@ -1,0 +1,98 @@
+---
+# Update apt.
+- name: Wait 2 minutes for apt lock.
+  ansible.builtin.pause:
+    minutes: 2
+
+- name: Update the system.
+  ansible.builtin.apt:
+    name: "*"
+    state: latest
+    update_cache: yes
+
+# Create the ansible user
+
+- name: Add the user {{ user_name }}.
+  ansible.builtin.user:
+    name: "{{ user_name }}"
+    password: "*"
+    expires: -1
+
+- name: Manage sudo group rights for {{ user_name }}.
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers
+    regexp: "^{{ user_name }}"
+    line: "{{ user_name }} ALL=(ALL) NOPASSWD: ALL"
+    state: present
+    validate: "visudo -cf %s"
+  when: user_is_sudo
+
+# Configure ssh for the user
+
+- name: Create the .ssh directory for {{ user_name }}.
+  ansible.builtin.file:
+    path: "/home/{{ user_name }}/.ssh/"
+    state: directory
+    mode: 0700
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+    # Preserve timestamp for itempotence
+    modification_time: preserve
+    access_time: preserve
+
+- name: Create the authorized_keys file for {{ user_name }}.
+  ansible.builtin.file:
+    path: "/home/{{ user_name }}/.ssh/authorized_keys"
+    state: touch
+    mode: 0700
+    owner: "{{ user_name }}"
+    group: "{{ user_name }}"
+    # Preserve timestamp for itempotence
+    modification_time: preserve
+    access_time: preserve
+
+- name: Add the ssh public key for {{ user_name }}.
+  ansible.builtin.lineinfile:
+    path: "/home/{{ user_name }}/.ssh/authorized_keys"
+    line: "{{ user_ssh_public_key }}"
+
+# Configure ssh for the system
+
+- name: Upgrade security of ssh.
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    validate: "sshd -T -f %s"
+  with_items:
+    - regexp: "^PasswordAuthentication"
+      line: "PasswordAuthentication no"
+    - regexp: "^PermitRootLogin"
+      line: "PermitRootLogin no"
+    # Set the ssh port to the following
+    #- regexp: "^Port"
+    #  line: "Port 2555"
+  register: sshd_config
+
+# Reboot the host or restart ssh if necessary.
+
+- name: Check if a reboot is required.
+  stat:
+    path: /var/run/reboot-required
+  register: reboot_required
+
+- name: Restart ssh service.
+  ansible.builtin.service:
+    name: sshd
+    state: restarted
+  when: reboot_required.stat.exists == false and sshd_config.changed
+
+- block: # This block will fail if the role is started as root.
+    - name: Reboot the host.
+      ansible.builtin.reboot:
+        reboot_timeout: 30
+      when: reboot_required.stat.exists == true
+
+  rescue:
+    - meta: clear_host_errors

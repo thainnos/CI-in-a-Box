@@ -1,0 +1,18 @@
+---
+- name: Setup Content Security Policy.
+  ansible.builtin.lineinfile:
+    path: /etc/gitlab/gitlab.rb
+    line: |
+      gitlab_rails['content_security_policy'] = {
+          enabled: true,
+          report_only: false
+      }
+    regexp: ^gitlab_rails['content_security_policy']
+    insertbefore: ^# gitlab_rails['content_security_policy']
+  register: content_security_policy
+
+- name: Reconfigure Gitlab.
+  ansible.builtin.shell:
+    cmd: gitlab-ctl reconfigure
+    creates: /var/opt/gitlab/bootstrapped
+  become: true

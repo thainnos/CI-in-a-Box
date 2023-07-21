@@ -1,0 +1,17 @@
+---
+- name: Add the user.
+  ansible.builtin.user:
+    name: "{{ username }}"
+    password: "{{ password | password_hash('sha512') }}"
+    shell: /bin/bash
+  become: true
+
+- name: Manage sudo group rights for {{ username }}.
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers
+    regexp: "^{{ username }}"
+    line: "{{ username }} ALL=(ALL) ALL"
+    state: present
+    validate: "visudo -cf %s"
+  when: is_sudo
+  become: true

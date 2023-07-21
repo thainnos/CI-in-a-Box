@@ -1,0 +1,36 @@
+---
+# Check for installation level.
+- name: Check if the Gitlab repository exists.
+  ansible.builtin.stat:
+    path: /etc/apt/sources.list.d/gitlab_gitlab-ee.list
+  register: gitlab_repo_file
+
+- name: Check if Gitlab is already installed.
+  ansible.builtin.stat:
+    path: /usr/bin/gitlab-ctl
+  register: gitlab_ctl_file
+
+# Setup Gitlab repo.
+- name: Setup Gitlab repository and dependencies.
+  ansible.builtin.import_tasks: install/setup_gitlab_repo.yml
+  when: not gitlab_repo_file.stat.exists
+
+# Install Gitlab.
+- name: Install Gitlab.
+  ansible.builtin.import_tasks: install/install_gitlab.yml
+  when: not gitlab_ctl_file.stat.exists
+
+# Configure Gitlab.
+- name: Configure Gitlab.
+  ansible.builtin.import_tasks: install/configure_gitlab.yml
+
+# Create a API token for the root user.
+- name: Check if the root user already has a token.
+  ansible.builtin.shell:
+    cmd: 'sudo gitlab-rails runner "token = User.find_by_username(''root'').personal_access_tokens; puts token.any?"'
+  register: find_token
+
+- name: Create a API token.
+  ansible.builtin.shell:
+    cmd: 'sudo gitlab-rails runner "token = User.find_by_username(''root'').personal_access_tokens.create(scopes: [:api], name: ''Automation token''); token.set_token(''{{ gitlab_admin_api_token }}''); token.save!"'
+  when: "'true' not in find_token.stdout"

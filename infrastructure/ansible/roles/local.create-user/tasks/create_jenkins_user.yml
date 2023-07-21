@@ -1,0 +1,24 @@
+---
+- name: Create CRUMB authentication request
+  uri:
+    url: '{{ jenkins_url }}/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,":",//crumb)'
+    user: "{{ jenkins_admin_username }}"
+    password: "{{ jenkins_admin_password }}"
+    force_basic_auth: yes
+    return_content: yes
+  register: crumb
+
+- name: Add Jenkins account
+  uri:
+    method: POST
+    url: "{{ jenkins_url }}/securityRealm/createAccountByAdmin"
+    user: "{{ jenkins_admin_username }}"
+    password: '{{ jenkins_admin_password }}'
+    force_basic_auth: yes
+    follow_redirects: all
+    headers:
+      Jenkins-Crumb: '{{ crumb.content.split(":")[1] }}'
+      Cookie: '{{ crumb.set_cookie }}'
+    # body: 'username=user2&password1=pass&password2=pass&fullname=fullname&email=bubba%40dummy.bg'
+    body: 'username={{ username }}&password1={{ password }}&password2={{ password }}&fullname={{ title }}&email={{ username }}@ciinabox.demo'
+

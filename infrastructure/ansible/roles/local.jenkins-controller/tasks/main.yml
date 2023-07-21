@@ -1,0 +1,11 @@
+---
+# tasks file for jenkins
+- import_tasks: install_jenkins_and_java.yml
+
+- import_tasks: configure_jenkins.yml
+
+- import_tasks: get_jenkins_cli.yml
+
+- import_tasks: configure_plugins.yml
+
+- import_tasks: configure_ssh_keys.yml

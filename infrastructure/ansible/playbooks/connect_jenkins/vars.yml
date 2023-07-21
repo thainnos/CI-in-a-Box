@@ -1,0 +1,106 @@
+# System configuration
+jenkins_process_user: jenkins
+jenkins_process_group: "{{ jenkins_process_user }}"
+jenkins_home: "/var/lib/jenkins"
+
+# SSH Credential configuration
+ssh_credential_name: jenkins_agents
+agent_labels: jenkins
+
+# Jenkins jar configuration
+jenkins_init_file: /etc/default/jenkins
+
+jenkins_init_changes:
+  - option: "JENKINS_ARGS"
+    value: "--prefix={{ jenkins_url_prefix }}"
+  - option: "{{ jenkins_java_options_env_var }}"
+    value: "{{ jenkins_java_options }}"
+
+jenkins_java_options_env_var: JAVA_ARGS
+jenkins_java_options: "-Djenkins.install.runSetupWizard=false"
+jenkins_http_port_param: HTTP_PORT
+
+# jenkins-cli
+jenkins_jar_location: /opt/jenkins-cli.jar
+jenkins_connection_delay: 5
+jenkins_connection_retries: 60
+
+# Jenkins user configuration
+jenkins_admin_username: admin
+jenkins_admin_password: admin
+jenkins_admin_password_file: ""
+
+# Java configuration
+java_package: openjdk-11-jre
+
+# URL configuration
+jenkins_hostname: "{{ jenkins_instance }}"
+jenkins_url_prefix: ""
+jenkins_http_port: 8443
+
+# Internal variables
+__jenkins_complete_base_url: "https://{{ jenkins_hostname }}:{{ jenkins_http_port }}{{ jenkins_url_prefix }}"
+
+# Proxy configuration
+jenkins_proxy_host: ""
+jenkins_proxy_port: ""
+
+# Jenkins Plugin configuration
+jenkins_updates_url: "https://updates.jenkins.io"
+jenkins_plugins:
+  - name: ace-editor
+  - name: ant
+  - name: antisamy-markup-formatter
+  - name: branch-api
+  - name: cloudbees-folder
+  - name: credentials
+  - name: cvs
+  - name: docker-plugin
+  - name: durable-task
+  - name: external-monitor-job
+  - name: git-client
+  - name: git-server
+  - name: git
+  - name: github-api
+  - name: github-branch-source
+  - name: github
+  - name: javadoc
+  - name: jquery-detached
+  - name: junit
+  - name: ldap
+  - name: mailer
+  - name: matrix-auth
+  - name: matrix-project
+  - name: maven-plugin
+  - name: metrics
+  - name: pam-auth
+  - name: plain-credentials
+  - name: scm-api
+  - name: script-security
+  - name: ssh-credentials
+  - name: ssh-slaves
+  - name: subversion
+  - name: translation
+  - name: variant
+  - name: windows-slaves
+  - name: workflow-aggregator
+  - name: workflow-api
+  - name: workflow-basic-steps
+  - name: workflow-cps
+  - name: workflow-durable-task-step
+  - name: workflow-job
+  - name: workflow-multibranch
+  - name: workflow-scm-step
+  - name: workflow-step-api
+  - name: workflow-support
+  - name: favorite
+  - name: token-macro
+  - name: pipeline-stage-step
+  - name: blueocean
+  - name: blueocean-autofavorite
+  - name: gitlab-plugin
+
+jenkins_plugins_state: present
+jenkins_plugins_install_dependencies: true
+jenkins_plugin_timeout: 30
+jenkins_plugin_updates_expiration: 86400

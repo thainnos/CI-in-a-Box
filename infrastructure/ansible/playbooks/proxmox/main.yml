@@ -1,0 +1,96 @@
+---
+- name: Configure a Proxmox server.
+  hosts: proxmox
+
+  pre_tasks:
+    - ansible.builtin.script: "scripts/get_suffix.py '{{ inventory_hostname }}'"
+      args:
+        executable: python3
+      delegate_to: localhost
+      register: suffix_script
+      changed_when: False
+      become: False
+    
+    - ansible.builtin.set_fact:
+        suffix: "{{ suffix_script.stdout | trim }}"
+
+    - name: Set hostname fact.
+      ansible.builtin.set_fact:
+        hostname: "{{ base_hostname }}-{{ suffix }}"
+        # Needed for the call of ssl cert.
+        # If hostname is used, a recursive loop is created.
+        ssl_hostname: "{{ base_hostname }}-{{ suffix }}"
+      when: suffix is defined
+
+    - name: Set hostname fact.
+      ansible.builtin.set_fact:
+        hostname: "{{ base_hostname }}"
+        # Needed for the call of ssl cert. 
+        # If hostname is used, a recursive loop is created.
+        hostname: "{{ base_hostname }}"
+      when: suffix is not defined
+
+    - name: Fail with description if a variable is not set.
+      ansible.builtin.include_tasks: tasks/fail_conditions.yml
+      when: >
+        db_location is not defined or
+        db_password is not defined or
+        ssh_public_key is not defined or
+        gateway is not defined or
+        hostname is not defined or
+        subnet is not defined or
+        ip_addr is not defined
+
+    - name: Configure ip address and hostname.
+      ansible.builtin.include_tasks: tasks/configure_network.yml
+
+    - name: Configure ssh to use only public/private key.
+      ansible.builtin.include_tasks: tasks/configure_ssh.yml
+
+    - name: Create hostname var duplicate.
+      ansible.builtin.set_fact:
+        # Needed for the call of ssl cert.
+        # If hostname is used, a recursive loop is created.
+        ssl_hostname: "{{ base_hostname }}-{{ suffix }}"
+
+  tasks:
+    - name: Set and save the proxmox root user password.
+      ansible.builtin.include_tasks: tasks/configure_root_user.yml
+
+    - name: Configure the proxmox repo.
+      ansible.builtin.include_tasks: tasks/configure_repo.yml
+
+    - name: Configure the https certificate.
+      ansible.builtin.include_role:
+        name: local.add-ssl-cert
+      vars:
+        common_name: "ciinabox-{{ hostname }}"
+        comment: "Proxmox {{ suffix }} server."
+        hostname: "{{ ssl_hostname }}.{{ domain }}"
+        ip_address: "{{ ip_addr | ansible.utils.ipaddr('address') }}"
+
+    - name: Configure the cloud-init template.
+      ansible.builtin.include_tasks: tasks/configure_vm_template.yml
+
+    - name: Get the name of this hosts inventory parent group.
+      ansible.builtin.set_fact:
+        parent_group: "server-{{ suffix }}"
+      when: suffix is defined
+
+    - name: Get the name of this hosts inventory parent group.
+      ansible.builtin.set_fact:
+        parent_group: "server"
+      when: suffix is not defined
+
+    - name: Get the vm ip addresses from the inventory.
+      ansible.builtin.set_fact:
+        jenkins_vms: "{{ groups['jenkins'] | ansible.utils.ipaddr(ansible_host + '/24') }}"
+        gitlab_vms: "{{ groups['gitlab'] | ansible.utils.ipaddr(ansible_host + '/24') }}"
+        runner_vms: "{{ groups['runner'] | ansible.utils.ipaddr(ansible_host + '/24') }}"
+        agent_vms: "{{ groups['agent'] | ansible.utils.ipaddr(ansible_host + '/24') }}"
+
+    - name: Configure the terraform api user.
+      ansible.builtin.include_tasks: tasks/configure_api_user.yml
+         
+    - name: Create, initialize and run the terraform automation.
+      ansible.builtin.include_tasks: tasks/terraform.yml

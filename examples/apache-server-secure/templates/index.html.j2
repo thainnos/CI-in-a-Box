@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <title>Sicherheitsreport</title>
+</head>
+
+<body>
+    <section class="page-header">
+        <h1 class="page-title">
+            Sicherheitsreport
+        </h1>
+    </section>
+
+    <section class="overview">
+        <div class="overview-item">
+            <p class="overview-item-status {{ port_security_level }}">
+                &#8226;
+            </p>
+            <p class="overview-item-amount">{{ ports | length }}</p>
+            <p class="overview-item-description">Informationslecks</p>
+        </div>
+        <div class="overview-item">
+            <p class="overview-item-status {% if tls_versions %}red{% else %}green{% endif %}">
+                &#8226;
+            </p>
+            <p class="overview-item-amount">{{ tls_versions | length }}</p>
+            <p class="overview-item-description">TLS Versionsfehler</p>
+        </div>
+        <div class="overview-item">
+            <p class="overview-item-status {% if ciphers %}red{% else %}green{% endif %}">
+                &#8226;
+            </p>
+            <p class="overview-item-amount">{{ ciphers | length }}</p>
+            <p class="overview-item-description">Cipher Fehler</p>
+        </div>
+    </section>
+
+    <section class="page-entry">
+        <div class="page-entry-header">
+            <h2>
+                <span class="{{ port_security_level }}">&#8226;</span>
+                Informationsleck
+            </h2>
+        </div>
+
+        <p class="page-entry-description">
+            Informationen zum das System erleichtern Angreifern
+            die Suche nach Schwachstellen, daher sollten sie nicht
+            angezeigt werden.
+        </p>
+        <p>            
+            {% if ports %}
+            An den folgenden Stellen werden zu
+            viele Information zum System angezeigt:
+            {% else %}
+            Diese Schwachstelle ist hier nicht vorhanden.
+            {% endif %}
+        </p>
+        {% if ports %}
+        <ul class="page-entry-items">
+            {% for port in ports %}
+            <li class="page-entry-item">
+                <p>
+                    Der Port {{ port }} zeigt sowohl die Versionsnummer von
+                    Apache an als auch das Betriebssystem des Servers.
+                    Diese
+                    <a href="https://www.inmotionhosting.com/support/server/apache/hide-apache-version-and-linux-os/">
+                        Anleitung</a>
+                    zeigt, wie beides deaktiviert werden kann.
+                </p>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </section>
+
+    <section class="page-entry">
+        <div class="page-entry-header">
+            <h2>
+                <span class="{{ ssl_security_level }}">&#8226;</span>
+                SSL Konfiguration
+            </h2>
+        </div>
+
+        <p class="page-entry-description">
+            In diesem Abschnitt werden Probleme bei der SSL Konfiguration
+            aufgelistet. Eine schlechte oder falsche SSL Konfiguration
+            ermöglicht es Angreifern die Verschlüsselung zu brechen und damit
+            Zugriff auf die übermittelten Informationen (wie z.B. Passwörter)
+            zu bekommen. 
+        </p>
+        {% if tls_versions or ciphers %}
+            <p class="page-entry-description">
+                Im Folgenden werden die Probleme der SSL Konfiguration
+                aufgelistet. Zum Erstellen einer sicheren SSL Konfiguration
+                kann dieses <a href="https://ssl-config.mozilla.org/">Tool</a>
+                von Mozilla verwendet werden.
+            </p>
+
+            <h3 class="page-entry-title">
+                <span class="{% if tls_versions %}red{% else %}green{% endif %}">&#8226;</span>
+                TLS Version
+            </h3>
+            {% if tls_versions %}
+                <p class="page-entry-description">Die folgenden unsicheren TLS Versionen werden unterstützt:</p>
+                <ul class="page-entry-items">
+                    {% for version in tls_versions %}
+                    <li class="page-entry-item">
+                        <p>TLS Version {{ version }}</p>
+                    </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="page-entry-description">Die TLS Version ist sicher konfiguriert.</p>
+            {% endif %}
+
+            <h3 class="page-entry-title">
+                <span class="{% if ciphers %}red{% else %}green{% endif %}">&#8226;</span>                
+                Verschlüsselungschiffren (cipher)
+            </h3>
+            {% if ciphers %}
+                <p class="page-entry-description">Die folgenden unsicheren Verschlüsselungschiffren werden unterstützt:</p>
+                <ul class="page-entry-items">
+                    {% for cipher in ciphers %}
+                    <li class="page-entry-item">
+                        <p>{{ cipher }}</p>
+                    </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="page-entry-description">Die Verschlüsselungschiffren sind sicher konfiguriert.</p>
+            {% endif %}
+        {% else %}
+            <p class="page-entry-description">
+                Beim Überprüfen der SSL Konfiguration (bezüglich TLS Version und Verschlüsselungschiffren)
+                wurden keine Schwachstellen festgestellt.
+            </p>
+        {% endif %}    
+    </section>
+</body>
+
+</html>

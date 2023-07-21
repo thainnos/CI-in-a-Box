@@ -1,0 +1,23 @@
+---
+- name: Ensure the user configuration is correct.
+  ansible.builtin.shell:
+    cmd: >
+      python3 {{ role_path }}/script/configure_router_user.py 
+      --users "[{\"name\": \"{{username}}\", 
+      \"password\": \"{{password}}\"}]" 
+      "{{ router_config_path }}"
+  register: router_user
+  changed_when: '"The router user configuration was changed." in router_user.stdout'
+  delegate_to: localhost
+
+- name: Activate the new configuration.
+  block:
+    - name: Move the updated configuration to the router.
+      ansible.builtin.copy:
+        src: ./config.xml
+        dest: /conf/config.xml
+
+    - name: Reboot the router.
+      ansible.builtin.reboot:
+        reboot_timeout: 30
+  when: router_user.changed and apply_router_changes

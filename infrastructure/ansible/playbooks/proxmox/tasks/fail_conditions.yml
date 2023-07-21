@@ -1,0 +1,32 @@
+---
+- ansible.builtin.fail:
+    msg: "The kdbx database location must be defined."
+  when: db_location is not defined
+
+- ansible.builtin.fail:
+    msg: "The password for the kdbx database must be defined."
+  when: db_password is not defined
+
+- ansible.builtin.fail:
+    msg: "The domain for the router lan must be defined."
+  when: domain is not defined
+
+- ansible.builtin.fail:
+    msg: "The ssh public key for the proxmox root user must be defined."
+  when: ssh_public_key is not defined
+
+- ansible.builtin.fail:
+    msg: "The gateway for the proxmox server must be defined."
+  when: gateway is not defined
+
+- ansible.builtin.fail:
+    msg: "The hostname for the proxmox server must be defined."
+  when: hostname is not defined
+
+- ansible.builtin.fail:
+    msg: "The subnet for the proxmox server must be defined."
+  when: subnet is not defined
+
+- ansible.builtin.fail:
+    msg: "The ip address for the proxmox server must be defined."
+  when: ip_addr is not defined

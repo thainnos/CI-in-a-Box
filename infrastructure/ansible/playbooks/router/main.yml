@@ -1,0 +1,80 @@
+---
+- name: Configure an OPNsense router.
+  hosts: router
+
+  tasks:
+    - name: Get the current router config.
+      ansible.builtin.fetch:
+        src: /conf/config.xml
+        dest: "./" # The /playbook/router/ dir.
+        flat: yes
+
+    # user_list zu keepass db und dem router hinzufügen.
+    - name: Save the users from user_list in the kdbx db.
+      include_role: 
+        name: local.create-user
+      vars:
+        group_name: "router"
+        title: "OPNsense user {{ item }}"
+        username: "{{ item }}"
+        # username is not set here since it was already set at the top.
+        icon: "12"
+        notes: "The user {{ item }} for every vm."
+      with_items: "{{ user_list }}"
+
+    - name: Ensure the general configuration is correct.
+      ansible.builtin.shell:
+        cmd: >
+          python3 script/configure_general.py 
+          --ssh_key "{{ ssh_public_key }}" "./config.xml"
+      register: general_configuration
+      changed_when: '"The general configuration was changed." in general_configuration.stdout'
+      delegate_to: localhost
+
+    - name: Ensure the interface is configured correctly.
+      ansible.builtin.shell:
+        cmd: 'python3 script/configure_lan_interface.py "./config.xml"'
+      register: interface_configuration
+      changed_when: '"The lan interface configuration was changed." in interface_configuration.stdout'
+      delegate_to: localhost
+
+    - name: Ensure the certificates are configured correctly.
+      ansible.builtin.shell:
+        cmd: 'python3 script/configure_certificates.py --root_cert "../../../ciinabox-ca.crt" "./config.xml"'
+      register: certificate_configuration
+      changed_when: '"The certificate configuration was changed." in certificate_configuration.stdout'
+      delegate_to: localhost
+
+    - name: Ensure the vpn is configured correctly.
+      ansible.builtin.shell:
+        cmd: 'python3 script/configure_vpn.py "./config.xml"'
+      register: vpn_configuration
+      changed_when: '"The vpn configuration was changed." in vpn_configuration.stdout'
+      delegate_to: localhost
+
+    - name: Move the updated configuration to the router.
+      ansible.builtin.copy:
+        src: ./config.xml
+        dest: /conf/config.xml
+      when: >
+        general_configuration.changed or 
+        interface_configuration.changed or 
+        (router_user is defined and router_user.changed) or
+        vpn_configuration.changed or
+        certificate_configuration.changed
+
+    - name: Activate the new configuration.
+      block:
+      - name: Reboot the router.
+        ansible.builtin.reboot:
+          reboot_timeout: 300
+
+      rescue:
+        - meta: clear_host_errors
+
+      when: >
+        general_configuration.changed or
+        interface_configuration.changed or
+        (router_user is defined and router_user.changed) or
+        vpn_configuration.changed or
+        certificate_configuration.changed

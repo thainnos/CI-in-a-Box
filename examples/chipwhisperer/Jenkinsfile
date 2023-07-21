@@ -1,0 +1,221 @@
+pipeline {
+    agent none // Force every stage to specify the agent
+
+    options {
+        timestamps() // Generate timestamps in the output of jenkins
+    }
+
+    stages {
+        stage('Prepare Stashes'){
+            agent {
+                label 'Ubuntu'
+            }
+            when {
+                not {
+                    // Stage is not necessary if all the stages will be forced to run.
+                    // Fixes the issue of the first ever run of the pipeline
+                    // -> first run needs to be done with "--force" flag
+                    changelog ".*--force.*"
+                }
+            }
+            steps {
+                echo "Prepare Stashes Stage"
+                echo "From dev-philipp Branch"
+
+                // Copy the last successfull artifacts 
+                copyArtifacts fingerprintArtifacts: true, projectName: env.JOB_NAME//, selector: specific(env.BUILD_NUMBER)
+
+                // Prestash all the previous artifacts
+                // Reason: Stash directive overwrites previous stashes -> if a stage doesn't run,
+                // the stash with the previous artifacts are ready for the next stage
+                // All stashes will be collected at the end for the artifacts 
+                stash includes: 'simpleserial-aes-CWLITEARM.hex', name: 'image', useDefaultExcludes: false
+                stash includes: 'trace_array.npy, textin_array.npy, known_keys.npy', name: 'captures', useDefaultExcludes: false
+                stash includes: 'cw_analysis_results_nb.html', name: 'analysis', useDefaultExcludes: false
+            }
+        }
+        stage('Build') {
+            agent {
+                label 'Ubuntu'
+            }
+            when {
+                anyOf {
+                    changeset "firmware/*"
+                    changelog ".*--force.*"
+                }
+            }
+            steps {
+                echo "Build Stage"
+
+                // Install required prerequisites for building firmware 
+                sh "sudo apt update"
+                sh "sudo apt -y install libusb-dev make git avr-libc gcc-avr gcc-arm-none-eabi libusb-1.0-0-dev usbutils"
+                
+                // Build the image
+                dir("firmware/simpleserial-aes"){
+                    sh "make PLATFORM=CWLITEARM CRYPTO_TARGET=TINYAES128C"
+
+                    // Stash the image
+                    stash includes: 'simpleserial-aes-CWLITEARM.hex', name: 'image', useDefaultExcludes: false
+                }
+            }
+        }
+        stage('Test') {
+            agent {
+                label 'RPi'
+            }
+            when {
+                anyOf {
+                    changeset "firmware/*"
+                    changeset "capture/*"
+                    changelog ".*--force.*"
+                }
+            }
+            options {
+                skipDefaultCheckout true
+            }
+            environment{
+                HOME="${env.WORKSPACE}"
+                REQ_PYTHON_VER = "3.9"
+                REQ_PYTHON_VER_WITH_MINOR = "${REQ_PYTHON_VER}.5"
+                PYTHON_CMD = "python$REQ_PYTHON_VER"
+                PATH = "$HOME/.pyenv/bin:$HOME/.pyenv/shims:${env.PATH}"
+            }
+            steps {
+                echo 'Test Stage'
+
+                // Clean up workspace
+                cleanWs(deleteDirs: true, patterns:[[pattern: '.pyenv/**', type: 'EXCLUDE']])
+
+                // Checkout the git into the src subdir
+                dir("src"){
+                    checkout scm
+                }
+
+                // Unstash the previous image
+                dir("src/capture/image"){
+                    // copyArtifacts filter: 'simpleserial-aes-CWLITEARM.hex', fingerprintArtifacts: true, projectName: env.JOB_NAME//, selector: specific(env.BUILD_NUMBER)
+                    unstash 'image'
+                }
+
+                // Install required packages for pyenv
+                sh "sudo apt-get update"
+                sh """
+                sudo apt-get install -y build-essential libssl-dev zlib1g-dev \
+                libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
+                libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+                sudo apt install -y build-essential gdb lcov pkg-config \
+                libbz2-dev libffi-dev libgdbm-dev libgdbm-compat-dev liblzma-dev \
+                libncurses5-dev libreadline6-dev libsqlite3-dev libssl-dev \
+                lzma lzma-dev tk-dev uuid-dev zlib1g-dev curl
+                """
+
+                // Install pyenv
+                // If .pyenv dir exists (and therefore pyenv) just update it, else install it
+                sh "if [ -d .pyenv ]; then pyenv update; else curl https://pyenv.run | bash; fi"
+                sh "pyenv init -"
+                sh "pyenv virtualenv-init -"
+
+                // Install python versions
+                sh "pyenv install -s $REQ_PYTHON_VER_WITH_MINOR"
+                sh "pyenv global $REQ_PYTHON_VER_WITH_MINOR"
+
+                withPythonEnv("$HOME/.pyenv/shims/${PYTHON_CMD}"){
+                    // Debug
+                    sh "$PYTHON_CMD --version"
+
+                    dir("src/capture"){
+                        // Set up chipwhisperer
+                        sh """
+                        sudo cp 50-newae.rules /etc/udev/rules.d/50-newae.rules
+                        sudo udevadm control --reload-rules
+                        sudo usermod -aG dialout $USER
+                        sudo usermod -aG plugdev $USER
+                        $PYTHON_CMD -m pip install chipwhisperer
+                        """
+                        // Run the script
+                        sh """
+                        $PYTHON_CMD capture.py
+                        """
+                    }
+                }
+
+                dir("src/capture"){
+                    // Stashing the results 
+                    stash includes: 'trace_array.npy, textin_array.npy, known_keys.npy', name: 'captures', useDefaultExcludes: false
+                }
+
+            }
+        }
+        stage('Analyze') {
+            agent {
+                label 'Ubuntu'
+            }
+            when {
+                anyOf {
+                    changeset "firmware/*"
+                    changeset "capture/*"
+                    changeset "analyze/*"
+                    changelog ".*--force.*"
+                }
+            }
+            environment{
+                PATH = "$HOME/.local/bin:${env.PATH}"
+            }
+            steps {
+                echo "Analyze Stage"
+
+                // Install dependencies
+                sh """
+                sudo apt install -y python3-pip python3-venv pandoc \
+                texlive-xetex texlive-fonts-recommended texlive-plain-generic
+                """
+
+                dir("analyze"){
+
+                    // Unstash the results from the capturing
+                    dir("captures"){
+                        // copyArtifacts filter: '*.npy', fingerprintArtifacts: true, projectName: env.JOB_NAME//, selector: specific(env.BUILD_NUMBER)
+                        unstash 'captures'
+                    }
+                    
+                    withPythonEnv("python3"){
+                        // Install the python libs
+                        sh "pip install -r requirements.txt"
+
+                        // Run the analyze script
+                        sh "python3 analyze_traces.py"
+
+                        // Build the notebooks to html
+                        sh "jupyter nbconvert --execute cw_analysis_results_nb.ipynb --to html"
+                        // sh "jupyter nbconvert --execute cw_analysis_results_nb.ipynb --to pdf"
+                        // sh "jupyter nbconvert --execute cw_analysis_results_nb.ipynb --to webpdf"
+                        // sh "jupyter nbconvert --execute cw_analysis_results_nb.ipynb --to slides"
+                        // sh "jupyter nbconvert --execute cw_analysis_results_nb.ipynb --to latex"
+                    }
+
+                    // Stash the rendered jupyter
+                    stash includes: 'cw_analysis_results_nb.html', name: 'analysis', useDefaultExcludes: false
+                }
+            }
+        }
+        stage('Collect Artifacts'){
+            agent {
+                label 'Ubuntu'
+            }
+            steps {
+                echo "Collect Artifacts Stage"
+
+                // Unstash all the stashes
+                unstash 'image'
+                unstash 'captures'
+                unstash 'analysis'
+
+                // Collect all the stashes in the artifacts
+                archiveArtifacts artifacts: 'simpleserial-aes-CWLITEARM.hex', fingerprint: true, onlyIfSuccessful: true
+                archiveArtifacts artifacts: 'trace_array.npy, textin_array.npy, known_keys.npy', fingerprint: true, onlyIfSuccessful: true
+                archiveArtifacts artifacts: 'cw_analysis_results_nb.html', fingerprint: true, onlyIfSuccessful: true
+            }
+        }
+    }
+}

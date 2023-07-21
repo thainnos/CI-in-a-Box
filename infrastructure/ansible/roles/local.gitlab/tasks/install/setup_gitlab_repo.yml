@@ -1,0 +1,26 @@
+---
+- name: Install Gitlab dependencies.
+  ansible.builtin.apt:
+    name:
+      - curl
+      - openssh-server
+      - ca-certificates
+      - tzdata
+      - perl
+      - postfix
+    state: present
+    update_cache: yes
+  become: true
+
+- name: Download the setup script.
+  ansible.builtin.get_url:
+    url: https://packages.gitlab.com/install/repositories/gitlab/gitlab-ee/script.deb.sh
+    dest: /tmp/setup_gitlab_repo.sh
+    mode: 0700
+    validate_certs: true
+
+- name: Add the gitlab repository.
+  ansible.builtin.shell:
+    cmd: /tmp/setup_gitlab_repo.sh
+  register: output
+  become: true

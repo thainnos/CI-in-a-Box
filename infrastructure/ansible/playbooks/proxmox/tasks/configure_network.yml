@@ -1,0 +1,50 @@
+---
+- name: Configure the ip adress and gateway.
+  lineinfile:
+    dest: /etc/network/interfaces
+    regexp: "{{ item.regexp }}"   
+    line: "{{ item.line }}"
+    state: present
+  with_items:
+    - regexp: "^\taddress"
+      line: "\taddress {{ ip_addr }}"
+    - regexp: "^\tgateway"
+      line: "\tgateway {{ gateway }}"
+  register: ip_addr_configured
+
+# Hostname setzen
+- name: Set hostname fact.
+  ansible.builtin.set_fact:
+    hostname: "{{ hostname }}"
+  when: server_postfix is defined
+
+- name: Set the hostname in /etc/hosts.
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: "^{{ inventory_hostname }} "
+    line: "{{ ip_addr | ansible.utils.ipaddr('address') }} {{ hostname }}.{{ domain }} {{ hostname }}"
+  register: hosts_file
+
+- name: Update the hostname in /etc/hostname.
+  ansible.builtin.template:
+    src: ./templates/hostname.j2
+    dest: /etc/hostname
+  register: hostname_file
+
+- block:
+    - name: Reboot
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+      when: >
+        ip_addr_configured.changed or
+        hosts_file.changed or
+        hostname_file.changed
+    
+  rescue:
+    - meta: clear_host_errors
+
+    - ansible.builtin.set_fact:
+        ansible_host: "{{ ip_addr | ansible.utils.ipaddr('address') }}"
+        inventory_host: "{{ ip_addr | ansible.utils.ipaddr('address') }}"
+      delegate_to: localhost
+      when: ip_addr_configured.changed

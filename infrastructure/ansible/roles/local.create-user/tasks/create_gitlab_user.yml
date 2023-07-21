@@ -1,0 +1,74 @@
+---
+- name: Fix for pyopenssl breaking pip.
+  block:
+    - name: Pip installation.
+      ansible.builtin.apt:
+        name: python3-pip
+        state: present
+      become: true
+    
+  rescue:
+    - name: Remove the problematic line.
+      ansible.builtin.replace:
+        path: /usr/lib/python3/dist-packages/OpenSSL/crypto.py
+        regexp: '^\s+CB_ISSUER_CHECK ='
+        replace: "\t#CB_ISSUER_CHECK = _lib.X509_V_FLAG_CB_ISSUER_CHECK"
+
+    - name: Upgrade pip.
+      ansible.builtin.shell:
+        cmd: pip install pip --upgrade
+
+    - name: Upgrade pyopenssl.
+      ansible.builtin.shell:
+        cmd: pip install pyopenssl --upgrade
+
+- name: Fix for pyopenssl breaking pip.
+  block:
+    - name: Install the python libaries for community.general.gitlab_user.
+      ansible.builtin.pip:
+        name: "{{ item }}"
+      with_items:
+        - python-gitlab
+        - requests
+
+  rescue:
+    - name: Remove the problematic line.
+      ansible.builtin.replace:
+        path: /usr/lib/python3/dist-packages/OpenSSL/crypto.py
+        regexp: '^\s+CB_ISSUER_CHECK ='
+        replace: "\t#CB_ISSUER_CHECK = _lib.X509_V_FLAG_CB_ISSUER_CHECK"
+
+    - name: Upgrade pip.
+      ansible.builtin.shell:
+        cmd: pip install pip --upgrade
+
+    - name: Upgrade pyopenssl.
+      ansible.builtin.shell:
+        cmd: pip install pyopenssl --upgrade
+
+    - name: Install the python libaries for community.general.gitlab_user.
+      ansible.builtin.pip:
+        name: "{{ item }}"
+      with_items:
+        - python-gitlab
+        - requests
+
+- name: Create the gitLab user.
+  community.general.gitlab_user:
+    state: present
+    api_url: "{{ gitlab_url }}"
+    api_username: "{{ api_username }}"
+    api_password: "{{ api_password }}"
+    name: "{{ username }}"
+    username: "{{ username }}"
+    password: "{{ password }}"
+    email: "{{ email | default(username + '@ciinabox.demo', true) }}"
+    sshkey_name: "{{ ssh_key_name | default(omit) }}"
+    sshkey_file: "{{ ssh_key_file | default(omit) }}"
+    confirm: no
+    # group: super_group/mon_group
+    # access_level: owner
+  register: result
+  until: not result.failed
+  retries: 60
+  delay: 10

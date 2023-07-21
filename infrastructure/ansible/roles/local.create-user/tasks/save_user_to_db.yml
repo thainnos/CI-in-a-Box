@@ -1,0 +1,35 @@
+---
+- block:
+  - name: Ensure the keepass database exists.
+    keepass:
+      db_file: "{{ db_location }}"
+      db_password: "{{ db_password }}"
+      state: present
+      type: db
+
+  - name: Ensure the group for this server exists.
+    keepass:
+      db_file: "{{ db_location }}"
+      db_password: "{{ db_password }}"
+      state: "present"
+      type: group
+      title: "{{ group_name }}"
+      icon: "12"
+
+  - name: Ensure the user exists.
+    keepass:
+      db_file: "{{ db_location }}"
+      db_password: "{{ db_password }}"
+      state: "present"
+      type: entry
+      title: "{{ title }}"
+      username: "{{ username }}"
+      password: "{{ password }}"
+      parent: "{{ group_name }}"
+      notes: "{{ notes }}"
+      icon: "{{ icon }}"
+  delegate_to: localhost
+  # Parallel access to the db for writing users seems to not work.
+  # throttle: 1 means this task is executed serially.
+  throttle: 1
+  become: false

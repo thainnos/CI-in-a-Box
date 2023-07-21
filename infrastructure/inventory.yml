@@ -1,0 +1,82 @@
+all:
+  children:
+    router:
+      hosts:
+        172.16.0.1:
+    server:
+      children:
+        server-top:
+          children:
+            proxmox:
+              hosts:
+                172.16.1.2:
+                  ip_addr: "172.16.1.2/12"
+            vms:
+              children:
+                gitlab:
+                  hosts:
+                    172.16.1.10:
+                jenkins:
+                  hosts:
+                    172.16.1.20:
+                runner:
+                  hosts:
+                    172.16.1.30:
+                      # The ip/hostname of the runners gitlab server.
+                      gitlab_instance: 172.16.1.10
+                agent:
+                  hosts:
+                    172.16.1.40:
+                      # The ip/hostname of the agents jenkins server.
+                      jenkins_instance: 172.16.1.20
+              vars:
+                ansible_user: ansible
+          vars:
+            subnet: "172.16.0.0"
+            suffix: "top"       
+        server-bottom:
+          children:
+            proxmox:
+              hosts: 
+                172.16.2.2:
+                  ip_addr: "172.16.2.2/12"
+            vms:
+              children:
+                gitlab:
+                  hosts: 
+                    172.16.2.10:
+                jenkins:
+                  hosts: 
+                    172.16.2.20:
+                runner:
+                  hosts:
+                    172.16.2.30:
+                      # The ip/hostname of the runners gitlab server.
+                      gitlab_instance: 172.16.2.10
+                agent:
+                  hosts:
+                    172.16.2.40:
+                      # The ip/hostname of the agents jenkins server.
+                      jenkins_instance: 172.16.2.20
+              vars:
+                ansible_user: ansible
+          vars:
+            subnet: "172.16.0.0"
+            suffix: "bottom"
+      vars:
+        # These variables are valid for every proxmox host.
+        gateway: "172.16.0.1"
+        base_hostname: proxmox
+        cidr: 12        
+  vars:
+    # These variables are valid for every host.
+    domain: "demo"
+    ansible_user: root
+    db_password: "test"
+    db_location: "../../../CIinaBox.kdbx"
+    ssh_public_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDDL5QUAy1zP0jja1C+QTCoEri7Hn8RD2z174Uaek9GHPbHYpZJHltG+BZ+M5zfsipkl7AKjuNSsIM2mJ4vorRcz6HHnkyg3PPHx4XtKwe3a41iPQon2xQtRAMhm50n2Joq4AFqDymAP+TqiAOcBiadesnR9nzEy4gh9tPs+aLPqv0/+Yq/Ucw5ooJ2i9MMwYvWhKVeb+dW/XrkozEafQdRTqzJvBsHePRSBxfE4ZKf4y08j3MsS7ynfvFcGboQ+8PZWhrwK44tsk6IRQNI6E1mCJVjQV1/BhITMbSeELrV0JorWk180kZy7GkXv5oa8hiY9HD3UdRTBO0kMccF+tuKhWH/t2fU9+XfON+b4NiCmzMIqfjQciFQmth00kN0pmEKSr2HtC9+gZh6CmMy6xpTXFWyqM5rJ4PHhXAyD0qQX6BhItqSkx5O8F3T7MkwO82FixKNXUNtuNAkIeACn6xcUQcg6Qt9GPug7JrXV+HSANZO4e3TgE6FLU31lWCoZtU= antonio@xlab"
+    user_list:
+      - "default"
+      - "test_1"
+      - "test_2"
+      - "test_3"

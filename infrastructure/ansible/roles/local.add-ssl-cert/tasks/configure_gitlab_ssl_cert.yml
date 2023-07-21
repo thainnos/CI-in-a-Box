@@ -1,0 +1,56 @@
+---
+- name: Check if there is an existing certificate.
+  ansible.builtin.stat:
+    path: /etc/gitlab/ssl/{{ external_url }}.crt
+  register: cert
+
+- name: Check if there is an existing key.
+  ansible.builtin.stat:
+    path: /etc/gitlab/ssl/{{ external_url }}.key
+  register: key
+
+- name: Add the certificate to gitlab.
+  block:
+    - name: Update the url to https and disable letsencrypt.
+      ansible.builtin.lineinfile:
+        dest: /etc/gitlab/gitlab.rb
+        # match option or commented out option if option
+        # is not found.
+        regexp: '^{{ item.option }} | ^# {{ item.option }}'
+        line: '{{ item.value }}'
+        state: present
+      with_items:
+        - option: 'external_url'
+          value: 'external_url "https://{{ external_url }}"'
+        - option: "letsencrypt['enable']"
+          value: "letsencrypt['enable'] = false"
+        - option: "nginx['redirect_http_to_https']"
+          value: "nginx['redirect_http_to_https'] = true"
+      become: true
+
+    - name: Create the directory for the ssl cert and key.
+      ansible.builtin.file:
+        path: /etc/gitlab/ssl
+        state: directory
+        mode: '0755'
+      become: true
+
+    - name: Create the certificate and key.
+      ansible.builtin.include_tasks: create_certificate.yml
+
+    - name: Copy the certificat and key to the directory.
+      ansible.builtin.copy:
+        src: "{{ item.file }}"
+        dest: "/etc/gitlab/ssl/{{ external_url }}.{{ item.extension }}"
+        remote_src: true
+      with_items:
+        - file: crt.pem
+          extension: crt
+        - file: key.pem
+          extension: key
+      become: true
+
+    - name: Reconfigure gitlab.
+      ansible.builtin.shell:
+        cmd: sudo gitlab-ctl reconfigure
+  when: (not cert.stat.exists) or (not key.stat.exists)

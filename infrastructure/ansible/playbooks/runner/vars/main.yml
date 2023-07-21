@@ -1,0 +1,4 @@
+gitlab_package: gitlab-ee
+# Any password shorter than 8 characters is not allowed by gitlab
+gitlab_admin_password: test3,141592test
+gitlab_admin_api_token: "!_Z><WQJOQ[uEd^U*cm7"

@@ -1,0 +1,107 @@
+---
+- name: Get the public key of the jenkins instance.
+  block:
+    - name: Store the content of the public key.
+      ansible.builtin.slurp:
+        src: "{{ jenkins_home }}/.ssh/id_jenkins.pub"
+      register: jenkins_public_ssh_key
+
+    - name: Extract the public key into a variable.
+      ansible.builtin.set_fact:
+        jenkins_ssh_pub_key: "{{ jenkins_public_ssh_key['content'] | b64decode | trim }}"
+  delegate_to: "{{jenkins_instance}}"
+
+- name: Make this public key an authorized key for the agent.
+  block:
+    - name: Create the ssh directory.
+      ansible.builtin.file:
+        path: /home/jenkins/.ssh
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: 0700
+        modification_time: preserve
+        access_time: preserve
+      become: true
+
+    - name: Write the public key to the authorized_keys file.
+      ansible.builtin.lineinfile:
+        path: /home/jenkins/.ssh/authorized_keys
+        line: "{{ jenkins_ssh_pub_key }}"
+        owner: jenkins
+        group: jenkins
+        create: yes
+        mode: 0700
+      become: true
+      register: ssh_user_added
+
+    # Do the following task on every jenkins slave
+    - name: Restart ssh service.
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
+      when: ssh_user_added is defined and ssh_user_added.changed
+
+- name: Add the agent to the jenkins instances known_hosts file.
+  block:
+    - name: Add the hashed fingerprint.
+      ansible.builtin.shell:
+        cmd: "ssh-keyscan -H {{ inventory_hostname }} >> /var/lib/jenkins/.ssh/known_hosts"
+      register: fingerprint
+
+    - name: Change ownership of the known_hosts file to jenkins.
+      ansible.builtin.file:
+        path: /var/lib/jenkins/.ssh/known_hosts
+        owner: jenkins
+        group: jenkins
+        modification_time: preserve
+        access_time: preserve
+      become: true
+  delegate_to: "{{jenkins_instance}}"
+
+- name: Add the agent to the jenkins server.
+  block:
+    - name: Check if the VM is already added to the Jenkins server.
+      ansible.builtin.shell:
+        cmd: "sudo java -jar {{ jenkins_jar_location }} -s {{ __jenkins_complete_base_url }} -http -auth {{ jenkins_admin_username }}:{{ jenkins_admin_password }} get-node {{ hostname }}"
+      failed_when: false
+      register: vm_added
+
+    - block:
+      - name: Move the template for the agent to the Jenkins server.
+        ansible.builtin.template:
+          src: node.xml.j2
+          dest: /home/ansible/node.xml
+          owner: ansible
+          group: ansible
+          mode: 0755
+
+      - name: Add the VM.
+        ansible.builtin.shell:
+          cmd: "sudo java -jar {{ jenkins_jar_location }} -s {{ __jenkins_complete_base_url }} -http -auth {{ jenkins_admin_username }}:{{ jenkins_admin_password }} create-node < /home/ansible/node.xml"
+
+      - name: Remove the template.
+        ansible.builtin.file:
+          path: /home/ansible/node.xml
+          state: absent
+      when: vm_added.rc != 0
+  delegate_to: "{{jenkins_instance}}"
+
+- name: Remove the executor on the jenkins instance itself.
+  block:
+    - name: Copy the script to remove the executors to jenkins.
+      ansible.builtin.copy:
+        src: files/remove_jenkins_executors.groovy
+        dest: /home/ansible/remove_jenkins_executors.groovy
+        owner: ansible
+        group: ansible
+
+    - name: Remove the executors of the master node.
+      ansible.builtin.shell:
+        cmd: "sudo java -jar {{ jenkins_jar_location }} -s {{ __jenkins_complete_base_url }} -http -auth {{ jenkins_admin_username }}:{{ jenkins_admin_password }} groovy = < remove_jenkins_executors.groovy"
+
+    - name: Remove the script.
+      ansible.builtin.file:
+        path: /home/ansible/remove_jenkins_executors.groovy
+        state: absent
+  delegate_to: "{{jenkins_instance}}"

@@ -1,0 +1,35 @@
+---
+# Setup the Jenkins user.
+- name: Setup a Jenkins user.
+  ansible.builtin.user:
+    name: jenkins
+    expires: -1
+  become: true
+
+- name: Manage sudo group rights for the jenkins user.
+  ansible.builtin.lineinfile:
+    path: /etc/sudoers
+    regexp: "^jenkins"
+    line: "jenkins ALL=(ALL) NOPASSWD: ALL"
+    state: present
+    validate: "visudo -cf %s"
+  become: true
+
+- name: Create a directory for the jenkins user.
+  ansible.builtin.file:
+    path: /var/lib/jenkins
+    state: directory
+    owner: jenkins
+    group: jenkins
+    mode: 0700
+  become: true
+
+# Install Java.
+- name: Update apt.
+  ansible.builtin.apt:
+    update_cache: yes
+
+- name: Ensure {{ java_package }} is installed.
+  ansible.builtin.apt:
+    name: "{{ java_package }}"
+    state: present

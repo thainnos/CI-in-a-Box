@@ -1,0 +1,95 @@
+---
+- name: Setup the jenkins controller.
+  hosts: jenkins
+
+  vars:
+    - https_configured: True
+
+  vars_files: vars.yml
+
+  pre_tasks:  
+    - ansible.builtin.script: "scripts/get_suffix.py '{{ inventory_hostname }}'"
+      args:
+        executable: python3
+      delegate_to: localhost
+      register: suffix_script
+      changed_when: False
+      become: False
+    
+    - ansible.builtin.set_fact:
+        suffix: "{{ suffix_script.stdout | trim }}"
+        
+    - name: Set proxmox hostname fact.
+      ansible.builtin.set_fact:
+        proxmox_hostname: "{{ base_hostname }}-{{ suffix }}"
+      when: suffix is defined
+
+    - name: Set proxmox hostname fact.
+      ansible.builtin.set_fact:
+        proxmox_hostname: "{{ base_hostname }}"
+      when: suffix is not defined
+
+    # Neues Passwort generieren.
+    - name: Generate a random password.
+      ansible.builtin.set_fact:
+        jenkins_admin_password: "{{ lookup('keepass', 'jenkins admin user', db_file=db_location, db_password=db_password, parent=proxmox_hostname, field='password')  | default(lookup('ansible.builtin.password', '/tmp/jenkins_admin_password.txt length=40'), true) }}"
+      delegate_to: localhost
+      become: false
+      
+    - name: Check if jenkins is running with https.
+      block: 
+        - name: Check the https port.
+          ansible.builtin.uri:
+            url: "https://{{ inventory_hostname }}:8443/login?from=%2F"
+            method: GET
+            validate_certs: yes
+            status_code: 200
+      rescue:
+        - name: Set the base url to http
+          ansible.builtin.set_fact:
+            https_configured: False
+            jenkins_http_port: 8080
+            __jenkins_complete_base_url: "http://{{ jenkins_hostname }}:8080{{ jenkins_url_prefix }}"
+
+  tasks:
+    - name: Save the admin user in the db.
+      ansible.builtin.include_role: 
+        name: local.create-user
+      vars:
+        group_name: "{{ proxmox_hostname }}"
+        title: "jenkins admin user"
+        username: "{{ jenkins_admin_username }}"
+        password: "{{ jenkins_admin_password }}"
+        icon: 12
+        notes: "The jenkins admin user." 
+        only_save_to_db: true   
+
+    - name: Setup Jenkins.
+      ansible.builtin.include_role: 
+        name: local.jenkins-controller
+      when: not https_configured
+
+    - name: Create the web interface users.
+      ansible.builtin.include_role: 
+        name: local.create-user
+      vars:
+        group_name: "{{ proxmox_hostname }}"
+        title: "jenkins user {{ item }}"
+        username: "{{ item }}"
+        icon: 12
+        notes: "The jenkins user {{ item }}."
+        # The old value (true) needs to be overwritten.
+        only_save_to_db: false
+        jenkins_url: "{{ __jenkins_complete_base_url }}"
+      with_items: "{{ user_list }}"
+      when: not https_configured
+
+    - name: Configure the ssl certificate.
+      ansible.builtin.include_role: 
+        name: local.add-ssl-cert
+      vars:
+        common_name: "ciinabox-jenkins-{{ suffix }}"
+        comment: "Jenkins {{ suffix }} server."
+        hostname: "jenkins-{{ suffix }}.{{ domain }}"
+        ip_address: "{{ inventory_hostname }}"
+      when: not https_configured

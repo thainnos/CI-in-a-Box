@@ -1,0 +1,12 @@
+<com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey plugin="ssh-credentials@295.vced876c18eb_4">
+  <scope>GLOBAL</scope>
+  <id>{{ ssh_credential_name }}</id>
+  <description></description>
+  <username>jenkins</username>
+  <usernameSecret>false</usernameSecret>
+  <privateKeySource class="com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey$DirectEntryPrivateKeySource">
+    <privateKey>
+{{ jenkins_private_ssh_key['content'] | b64decode | trim }}
+    </privateKey>
+  </privateKeySource>
+</com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey>

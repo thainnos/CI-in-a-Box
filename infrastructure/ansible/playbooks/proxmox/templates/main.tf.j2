@@ -1,0 +1,68 @@
+{% if gitlab_vms %}
+#
+# Gitlab VMs
+#
+
+{% for vm in gitlab_vms %}
+module "gitlab-top" {
+  source = "../modules/gitlab"
+  ssh_key = var.ssh_key
+  hostname_suffix = var.suffix
+  ipaddr = "{{ hostvars[vm]["inventory_hostname"] }}/{{ cidr }}"
+  gateway = var.gateway
+  node = var.node
+}
+
+{% endfor %}
+{% endif %}
+{% if runner_vms %}
+#
+# Runner VMs
+#
+module "runner-top" {
+  source = "../modules/runner"
+  ssh_key = var.ssh_key
+  hostname_suffix = var.suffix
+  gateway = var.gateway
+  node = var.node
+  runner_ips = {
+  {% for vm in runner_vms %}
+    "{{ loop.index - 1 }}" = "{{ hostvars[vm]["inventory_hostname"] }}/{{ cidr }}"
+  {% endfor %}
+  }
+}
+
+{% endif %}
+{% if jenkins_vms %}
+#
+# Jenkins VMs
+#
+{% for vm in jenkins_vms %}
+module "jenkins-top" {
+  source = "../modules/jenkins"
+  ssh_key = var.ssh_key
+  hostname_suffix = var.suffix
+  ipaddr = "{{ hostvars[vm]["inventory_hostname"] }}/{{ cidr }}"
+  gateway = var.gateway
+  node = var.node
+}
+
+{% endfor %}
+{% endif %}
+{% if agent_vms %}
+#
+# Agent VMs
+#
+module "agent-top" {
+  source = "../modules/agent"
+  ssh_key = var.ssh_key
+  hostname_suffix = var.suffix
+  gateway = var.gateway
+  node = var.node
+  agent_ips = {
+  {% for vm in agent_vms %}
+    "{{ loop.index - 1 }}" = "{{ hostvars[vm]["inventory_hostname"] }}/{{ cidr }}"
+  {% endfor %}
+  }
+}
+{% endif %}

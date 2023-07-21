@@ -1,0 +1,36 @@
+---
+- name: Check if a runner is already registered.
+  ansible.builtin.shell:
+    cmd: sudo gitlab-runner list
+  register: runner_list
+
+- block:
+  - name: Get a registration token from the gitlab instance.
+    block:
+      - name: Obtain a registration token.
+        ansible.builtin.shell:
+          cmd: sudo gitlab-rails runner -e production "puts Gitlab::CurrentSettings.current_application_settings.runners_registration_token"
+        register: registration_token
+
+      - name: Set gitlab runner token.
+        ansible.builtin.set_fact:
+          runner_token: "{{ registration_token.stdout }}"
+        when: registration_token.rc == 0
+    delegate_to: "{{ gitlab_instance }}"
+
+  - name: Register the runner.
+    ansible.builtin.shell:
+      cmd: |
+        sudo gitlab-runner register \
+          --non-interactive \
+          --url "https://{{ gitlab_instance }}/" \
+          --registration-token "{{ runner_token }}" \
+          --executor "docker" \
+          --docker-image alpine:latest \
+          --description "docker-runner" \
+          --maintenance-note "Free-form maintainer notes about this runner" \
+          --tag-list "docker,alpine" \
+          --run-untagged="true" \
+          --locked="false" \
+          --access-level="not_protected"
+  when: "'Executor' not in runner_list.stderr"

@@ -1,0 +1,57 @@
+---
+- name: Create the dhcp static mappings.
+  hosts: all:!router
+
+  tasks:
+    - name: Gather default_ipv4 facts.
+      setup:
+        gather_subset:
+          - "default_ipv4"
+    
+    - name: Get the hostname.
+      shell:
+        cmd: hostname
+      register: hostname
+
+    - name: Ensure the staticmapping directory exists.
+      ansible.builtin.file:
+        path: ./xml/
+        state: directory
+      delegate_to: localhost
+
+    - name: Create a staticmapping for this host.
+      template:
+        src: ./templates/staticmapping.xml.j2
+        dest: "./xml/staticmapping-{{ hostname.stdout }}.xml"
+      delegate_to: localhost
+
+- name: Configure the dhcp static mappings.
+  hosts: router
+  gather_facts: false
+
+  tasks:
+    - name: Get the current router config.
+      ansible.builtin.fetch:
+        src: /conf/config.xml
+        dest: "./" # The /playbook/router/ dir.
+        flat: yes
+
+    - name: Ensure the staticmaps are configured correctly.
+      ansible.builtin.shell:
+        cmd: 'python3 script/configure_staticmaps.py --static_map_dir "./xml" "./config.xml"'
+      register: staticmap_configuration
+      changed_when: '"The staticmap configuration was changed." in staticmap_configuration.stdout'
+      delegate_to: localhost
+
+    - name: Activate the new configuration.
+      block:
+        - name: Move the updated configuration to the router.
+          ansible.builtin.copy:
+            src: ./config.xml
+            dest: /conf/config.xml
+
+        - name: Reboot the router.
+          ansible.builtin.reboot:
+            reboot_timeout: 300
+
+      when: staticmap_configuration.changed

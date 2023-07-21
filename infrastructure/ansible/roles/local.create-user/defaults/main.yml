@@ -1,0 +1,40 @@
+---
+pw_defined: False
+
+# The database information
+db_password: "test"
+db_location: "./db.kdbx"
+
+# The user information
+title: "default vm user"
+username: "default"
+group_name: "users"
+icon: "12"
+notes: "The default user for every vm."
+
+only_save_to_db: false
+
+# Set this for os users.
+create_os_user: false
+is_sudo: false
+
+# When creating router users the router needs to be
+# rebooted to apply the changes. Its unnecessary and
+# time consuming to reboot the router every time so
+# this variable allows the router to only be rebooted
+# after all users were added.
+router_config_path: ./config.xml
+apply_router_changes: false
+
+# Needed for creating a jenkins web interface user account.
+jenkins_url: ""
+jenkins_admin_username: ""
+jenkins_admin_password: ""
+
+# Needed for creating a gitlab web interface user account.
+gitlab_url: ""
+gitlab_api_username: ""
+gitlab_api_password: ""
+email: ""
+ssh_key_name: ""
+ssh_key_file: ""

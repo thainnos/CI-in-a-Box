@@ -1,0 +1,20 @@
+- name: Configure the VMs to be usable as Jenkins agents.
+  hosts: agent
+  become: yes
+
+  vars_files: vars.yml
+  
+  pre_tasks:  
+    - ansible.builtin.script: "scripts/get_suffix.py '{{ inventory_hostname }}'"
+      args:
+        executable: python3
+      delegate_to: localhost
+      register: suffix_script
+      changed_when: False
+      become: False
+    
+    - ansible.builtin.set_fact:
+        suffix: "{{ suffix_script.stdout | trim }}"
+       
+  roles:
+    - local.jenkins-slave-setup

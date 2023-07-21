@@ -1,0 +1,65 @@
+---
+- name: Add all agents to all jenkins controllers.
+  hosts: agent
+  become: yes
+
+  vars_files: vars.yml
+
+  pre_tasks:  
+    - ansible.builtin.script: "scripts/get_suffix.py '{{ inventory_hostname }}'"
+      args:
+        executable: python3
+      delegate_to: localhost
+      register: suffix_script
+      changed_when: False
+      become: False
+    
+    - ansible.builtin.set_fact:
+        suffix: "{{ suffix_script.stdout | trim }}"
+        
+    - name: Set proxmox hostname fact.
+      ansible.builtin.set_fact:
+        proxmox_hostname: "{{ base_hostname }}-{{ suffix }}"
+      when: suffix is defined
+
+    - name: Set proxmox hostname fact.
+      ansible.builtin.set_fact:
+        proxmox_hostname: "{{ base_hostname }}"
+      when: suffix is not defined
+
+    - name: Get the jenkins admin password.
+      ansible.builtin.set_fact:
+        jenkins_admin_password: "{{ lookup('keepass', 'jenkins admin user', db_file=db_location, db_password=db_password, parent=proxmox_hostname, field='password') }}"
+      delegate_to: localhost
+      become: false
+
+    - name: Register the hostname of the agent.
+      block:
+        - name: Get the hostname from /etc/hostname.
+          ansible.builtin.shell:
+            cmd: cat /etc/hostname
+          register: cat_hostname
+          changed_when: false
+
+        - name: Register the hostname.
+          ansible.builtin.set_fact:
+            hostname: "{{ cat_hostname.stdout }}"
+
+    - name: Check if jenkins is running with https.
+      block: 
+        - name: Check the https port.
+          ansible.builtin.uri:
+            url: "{{ __jenkins_complete_base_url }}/login?from=%2F"
+            method: GET
+            validate_certs: yes
+            status_code: 200
+          delegate_to: "{{ jenkins_instance }}"
+      rescue:
+        - name: Set the base url to http
+          ansible.builtin.set_fact:
+            jenkins_http_port: 8080
+            __jenkins_complete_base_url: "http://{{ jenkins_instance }}:8080{{ jenkins_url_prefix }}"
+
+
+  roles:
+    - role: local.connect-agent

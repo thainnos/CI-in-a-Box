@@ -1,0 +1,41 @@
+---
+- name: Check if the password is defined.
+  ansible.builtin.set_fact:
+    pw_defined: True
+  when: password is defined
+
+- name: Check if the password is None.
+  ansible.builtin.set_fact:
+    pw_defined: False
+  when: (password is defined) and (password == None)
+
+- name: Use the existing password from the db or create a password.
+  ansible.builtin.set_fact:
+    password: "{{ lookup('keepass', title, db_file=db_location, db_password=db_password, parent=group_name, field='password')  | default(lookup('ansible.builtin.password', '/tmp/' + group_name + '_' + username + '_' + title + '.txt length=40'), true) }}"
+  delegate_to: localhost
+  become: false
+  when: not pw_defined
+  register: create_pw
+
+- name: Store the user in the database.
+  ansible.builtin.include_tasks: save_user_to_db.yml
+
+- name: Create an os user.
+  ansible.builtin.include_tasks: create_os_user.yml
+  when: create_os_user and not only_save_to_db
+
+- name: Create a gitlab user.
+  ansible.builtin.include_tasks: create_gitlab_user.yml
+  when: '"gitlab" in group_names and not only_save_to_db'
+
+- name: Create a jenkins user.
+  ansible.builtin.include_tasks: create_jenkins_user.yml
+  when: '"jenkins" in group_names and not only_save_to_db'
+
+- name: Create a opnsense user.
+  ansible.builtin.include_tasks: create_opnsense_user.yml
+  when: '"router" in group_names and not only_save_to_db'
+
+- name: Unset the password.
+  ansible.builtin.set_fact:
+    password:

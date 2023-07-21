@@ -1,0 +1,84 @@
+---
+- name: Install Gitlab CE
+  hosts: gitlab
+  become: true
+
+  vars_files:
+    - vars/main.yml
+
+  pre_tasks:  
+    - ansible.builtin.script: "scripts/get_suffix.py '{{ inventory_hostname }}'"
+      args:
+        executable: python3
+      delegate_to: localhost
+      register: suffix_script
+      changed_when: False
+      become: False
+    
+    - ansible.builtin.set_fact:
+        suffix: "{{ suffix_script.stdout | trim }}"
+        
+    - name: Set proxmox hostname fact.
+      ansible.builtin.set_fact:
+        proxmox_hostname: "{{ base_hostname }}-{{ suffix }}"
+      when: suffix is defined
+
+    - name: Set proxmox hostname fact.
+      ansible.builtin.set_fact:
+        proxmox_hostname: "{{ base_hostname }}"
+      when: suffix is not defined
+
+    # Neues Passwort generieren.
+    - name: Generate a random password
+      ansible.builtin.set_fact:
+        gitlab_admin_password: "{{ lookup('keepass', 'gitlab admin user', db_file=db_location, db_password=db_password, parent=proxmox_hostname, field='password')  | default(lookup('ansible.builtin.password', '/tmp/gitlab_admin_password.txt length=40'), true) }}"
+      delegate_to: localhost
+      become: false
+
+  tasks:
+    - name: Create the admin user.
+      ansible.builtin.include_role: 
+        name: local.create-user
+      vars:
+        group_name: "{{ proxmox_hostname }}"
+        title: "gitlab admin user"
+        username: "root"
+        password: "{{ gitlab_admin_password }}"
+        icon: 12
+        notes: "The gitlab admin user."
+        only_save_to_db: true
+
+    - name: Setup Gitlab.
+      ansible.builtin.include_role: 
+        name: local.gitlab
+
+    - name: Configure the ssl certificate.
+      ansible.builtin.include_role: 
+        name: local.add-ssl-cert
+      vars:
+        common_name: "ciinabox-gitlab-{{ suffix }}"
+        comment: "Gitlab {{ suffix }} server."
+        hostname: "gitlab-{{ suffix }}.{{ domain }}"
+        ip_address: "{{ inventory_hostname }}"
+        external_url: "gitlab-{{ suffix }}.{{ domain }}"
+
+    - name: Wait until gitlab is available on Port 443.
+      ansible.builtin.wait_for:
+        host: "{{ inventory_hostname }}"
+        port: 443
+        delay: 10
+        state: started    
+
+    - name: Create the web interface users.
+      ansible.builtin.include_role: 
+        name: local.create-user
+      vars:
+        group_name: "{{ proxmox_hostname }}"
+        title: "gitlab user {{ item }}"
+        username: "{{ item }}"
+        icon: 12
+        notes: "The gitlab user {{ item }}."
+        only_save_to_db: false
+        api_username: root
+        api_password: "{{ gitlab_admin_password }}"
+      with_items: "{{ user_list }}"

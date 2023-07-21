@@ -1,0 +1,29 @@
+---
+- name: Install Java and it's dependencies.
+  block:
+    - name: Update apt.
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Ensure {{ java_package }} is installed.
+      ansible.builtin.apt:
+        name: "{{ java_package }}"
+        state: present
+
+    - name: Add Jenkins keyring.
+      ansible.builtin.apt_key:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io.key
+        state: present
+
+    - name: Add Jenkins repository.
+      ansible.builtin.apt_repository:
+        repo: deb https://pkg.jenkins.io/debian-stable binary/
+        state: present
+
+    - name: Install Jenkins.
+      ansible.builtin.apt:
+        name: jenkins
+        update_cache: yes
+        state: present
+      register: jenkins_installed
+  become: true

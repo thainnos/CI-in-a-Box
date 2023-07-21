@@ -1,0 +1,23 @@
+---
+- name: Download the gitlab runner binary.
+  ansible.builtin.get_url:
+    url: https://gitlab-runner-downloads.s3.amazonaws.com/latest/binaries/gitlab-runner-linux-amd64
+    dest: /usr/local/bin/gitlab-runner
+    mode: 0770
+  become: true
+
+- name: Setup a user for the gitlab runner.
+  ansible.builtin.user:
+    name: gitlab-runner
+    comment: Gitlab Runner
+    shell: /bin/bash
+    create_home: yes
+  become: true
+
+- name: Install the runner.
+  ansible.builtin.shell:
+    cmd: sudo gitlab-runner install --user=gitlab-runner --working-directory=/home/gitlab-runner
+
+- name: Run the service.
+  ansible.builtin.shell:
+    cmd: sudo gitlab-runner start

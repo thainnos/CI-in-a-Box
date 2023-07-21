@@ -1,0 +1,27 @@
+---
+- name: Configure the router.
+  import_playbook: playbooks/router/main.yml
+
+- name: Configure the vms.
+  import_playbook: playbooks/fresh_vm/main.yml
+
+- name: Configure the static dhcp leases.
+  import_playbook: playbooks/configure_dhcp/main.yml
+
+- name: Configure the Gitlab VMs.
+  import_playbook: playbooks/gitlab/main.yml
+
+- name: Configure the Gitlab Runners.
+  import_playbook: playbooks/runner/main.yml
+
+- name: Connect the Gitlab Runners to the Gitlab Servers.
+  import_playbook: playbooks/connect_gitlab/main.yml
+
+- name: Configure the Jenkins VMs.
+  import_playbook: playbooks/jenkins/main.yml
+
+- name: Configure the Jenkins Agents.
+  import_playbook: playbooks/agent/main.yml
+
+- name: Connect the Jenkins Agents to the Jenkins Servers.
+  import_playbook: playbooks/connect_jenkins/main.yml

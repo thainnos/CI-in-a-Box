@@ -1,0 +1,36 @@
+---
+- block:
+    # Set Jenkins password fact.
+    - name: Get Jenkins admin password from file
+      ansible.builtin.slurp:
+        src: "{{ jenkins_admin_password_file }}"
+      register: adminpasswordfile
+      no_log: true
+      when: jenkins_admin_password_file | default(false)
+
+    - name: Set Jenkins admin password fact.
+      ansible.builtin.set_fact:
+        jenkins_admin_password: "{{ adminpasswordfile['stdout'] | default(jenkins_admin_password) }}"
+      no_log: true
+
+    - name: Install the Jenkins plugins (random failure resistant).
+      block:
+        - name: Install Jenkins plugins
+          ansible.builtin.shell:
+            cmd: "sudo java -jar {{ jenkins_jar_location }} -s {{ __jenkins_complete_base_url }} -http -auth {{ jenkins_admin_username }}:{{ jenkins_admin_password }} install-plugin {{ item.name }}"
+          with_items: "{{ jenkins_plugins }}"
+          register: plugin_result
+      rescue:
+        - meta: clear_host_errors
+        - name: Retry the installation if a plugin wasn't installed.
+          ansible.builtin.shell:
+            cmd: "sudo java -jar {{ jenkins_jar_location }} -s {{ __jenkins_complete_base_url }} -http -auth {{ jenkins_admin_username }}:{{ jenkins_admin_password }} install-plugin {{ item.item.name }}"
+          when: item is failed
+          with_items: "{{ plugin_result.results }}"
+
+    - name: Restart Jenkins
+      ansible.builtin.service:
+        name: jenkins
+        state: restarted
+
+  become: true

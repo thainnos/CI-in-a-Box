@@ -1,0 +1,69 @@
+---
+- name: Check if connection with user ansible is possible.
+  hosts: all:!router
+  gather_facts: false
+
+  vars:
+    - ansible_user: ansible
+    - setup_ansible_user: false
+
+  vars_files:
+    - vars.yml
+
+  # Find out which user should be used.
+  pre_tasks:
+    - name: Check if a connection as ansible is possible.
+      block:
+        - ansible.builtin.wait_for_connection:
+          timeout: 60
+      rescue:
+        - meta: clear_host_errors
+        - ansible.builtin.set_fact:
+            setup_ansible_user: true
+
+  # Execute bootstapping as root the first time and
+  # ansible the consecutive times.
+  roles:
+    - role: local.bootstrap
+      ansible_user: root
+      become: yes
+      when: setup_ansible_user | bool
+
+    - role: local.bootstrap
+      ansible_user: ansible
+      become: yes
+      when: not setup_ansible_user | bool
+
+    # Add the default user.
+    - role: local.create-user
+      vars:
+        db_password: "test"
+        db_location: "../../../CIinaBox.kdbx"
+        group_name: "users"
+        title: "default vm user"
+        username: "default"
+        icon: "12"
+        notes: "The default user for every vm."
+        create_os_user: true
+        is_sudo: true
+        only_save_to_db: true
+
+  tasks:
+    # Add the self-signed ca-certificate.
+    - name: Ensure ca-certificates is installed.
+      ansible.builtin.apt:
+        name: "ca-certificates"
+        state: present
+      become: true
+
+    - name: Copy the ca certificate to the vm.
+      ansible.builtin.copy:
+        src: ../../../ciinabox-ca.crt
+        dest: /usr/local/share/ca-certificates/ciinabox-ca.crt
+      become: true
+      
+    - name: Update the certificate store.
+      ansible.builtin.shell:
+        cmd: sudo update-ca-certificates
+      register: update_ca_certs
+      changed_when: '"0 added" not in update_ca_certs.stdout'

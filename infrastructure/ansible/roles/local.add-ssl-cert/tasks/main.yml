@@ -1,0 +1,12 @@
+---
+- name: Add the certificate to a proxmox server.
+  ansible.builtin.include_tasks: configure_proxmox_ssl_cert.yml
+  when: '"proxmox" in group_names'
+
+- name: Add the certificate to a jenkins server.
+  ansible.builtin.include_tasks: configure_jenkins_ssl_cert.yml
+  when: '"jenkins" in group_names'
+
+- name: Add the certificate to a gitlab server.
+  ansible.builtin.include_tasks: configure_gitlab_ssl_cert.yml
+  when: '"gitlab" in group_names'

@@ -1,0 +1,28 @@
+---
+- name: Check if a certificate already exists.
+  ansible.builtin.stat:
+    path: /etc/pve/local/pveproxy-ssl.pem
+  register: cert
+
+- name: Check if a key already exists.
+  ansible.builtin.stat:
+    path: /etc/pve/local/pveproxy-ssl.key
+  register: key
+
+- name: Update the certificate.
+  block:
+    - name: Create new certificates.
+      ansible.builtin.include_tasks: create_certificate.yml
+
+    - name: Update the ssl cert used by proxmox.
+      ansible.builtin.shell:
+        cmd: cp crt.pem /etc/pve/local/pveproxy-ssl.pem
+
+    - name: Update the ssl cert used by proxmox.
+      ansible.builtin.shell:
+        cmd: cp key.pem /etc/pve/local/pveproxy-ssl.key
+
+    - name: Restart the pveproxy.
+      ansible.builtin.shell:
+        cmd: pveproxy restart
+  when: (not cert.stat.exists) or (not key.stat.exists)

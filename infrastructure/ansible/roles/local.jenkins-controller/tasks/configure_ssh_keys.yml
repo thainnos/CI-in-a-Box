@@ -1,0 +1,45 @@
+- block:
+    - name: Create a directory for the Jenkins ssh keys.
+      ansible.builtin.file:
+        path: "{{ jenkins_home }}/.ssh"
+        owner: jenkins
+        group: jenkins
+        mode: "0700"
+        state: directory
+
+    - name: Create ssh key for jenkins.
+      community.crypto.openssh_keypair:
+        path: "{{ jenkins_home }}/.ssh/id_jenkins"
+        comment: "jenkins@{{ jenkins_hostname }}"
+        type: rsa
+        size: 4096
+        state: present
+        owner: jenkins
+        group: jenkins
+      register: ssh_key_created
+
+    # Add the private key to Jenkins keystore.
+    - name: Store the content of the private key.
+      ansible.builtin.slurp:
+        src: "{{ jenkins_home }}/.ssh/id_jenkins"
+      register: jenkins_private_ssh_key
+      become: true
+      when: ssh_key_created is defined and ssh_key_created.changed
+
+    - name: Copy the XML describing the ssh key to Jenkins.
+      ansible.builtin.template:
+        src: jenkins-agent.xml.j2
+        dest: "/home/ansible/jenkins-agent.xml"
+        mode: 0600
+      when: ssh_key_created is defined and ssh_key_created.changed
+
+    - name: Add the key to the Jenkins keystore.
+      ansible.builtin.shell:
+        cmd: "sudo java -jar {{ jenkins_jar_location }} -s {{ __jenkins_complete_base_url }} -http -auth {{ jenkins_admin_username }}:{{ jenkins_admin_password }} create-credentials-by-xml system::system::jenkins _ < jenkins-agent.xml"
+      when: ssh_key_created is defined and ssh_key_created.changed
+
+    - name: Remove the file containing the private key.
+      ansible.builtin.file:
+        path: "/home/ansible/jenkins-agent.xml"
+        state: absent
+  become: true

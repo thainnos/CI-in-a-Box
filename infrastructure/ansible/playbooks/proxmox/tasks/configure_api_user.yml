@@ -1,0 +1,68 @@
+---
+- name: Check if proxmox role exists.
+  ansible.builtin.shell:
+    cmd: pveum role list | grep terraform-role
+  register: role_exists
+  failed_when: "role_exists.rc not in [ 0, 1 ]"
+  changed_when: false
+
+- name: Add proxmox role if it doesn't exist.
+  ansible.builtin.shell:
+    cmd: pveum role add terraform-role -privs "VM.Allocate VM.Clone VM.Config.CDROM VM.Config.CPU VM.Config.Cloudinit VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.Monitor VM.Audit VM.PowerMgmt Datastore.AllocateSpace Datastore.Audit"
+  when: role_exists.rc == 1
+
+- name: Check if proxmox user exists.
+  ansible.builtin.shell:
+    cmd: pveum user list | grep terraform@pve
+  register: user_exists
+  failed_when: "user_exists.rc not in [ 0, 1 ]"
+  changed_when: false
+
+- name: Add proxmox user if it doesn't exist.
+  ansible.builtin.shell:
+    cmd: pveum user add terraform@pve
+  when: user_exists.rc == 1
+
+- name: Check if the user has the role.
+  ansible.builtin.shell:
+    cmd: pveum acl list | grep terraform-role | grep terraform@pve
+  register: user_has_role
+  failed_when: "user_has_role.rc not in [ 0, 1 ]"
+  changed_when: false
+
+- name: Add the role to the user.
+  ansible.builtin.shell:
+    cmd: pveum aclmod / -user terraform@pve -role terraform-role
+  when: user_has_role.rc == 1
+
+- name: Check if the user already has a token.
+  ansible.builtin.shell:
+    cmd: pveum user token list terraform@pve | grep terraform-token
+  register: user_has_token
+  failed_when: "user_has_token.rc not in [ 0, 1 ]"
+  changed_when: false
+
+- name: Create a token for the user if none exist so far.
+  ansible.builtin.shell:
+    cmd: >-
+      pveum user token add terraform@pve terraform-token --privsep=0 | grep value
+  register: user_token
+  when: user_has_token.rc == 1
+
+- name: Set fact for proxmox_token
+  ansible.builtin.set_fact:
+    api_token_id: terraform@pve!terraform-token
+    api_token_secret: "{{ user_token.stdout_lines[1] | split() | unique | last }}"
+  when: user_has_token.rc == 1 
+
+- name: Save the api user in the kdbx db.
+  include_role: 
+    name: local.create-user
+  vars:
+    group_name: "{{ hostname }}"
+    title: "proxmox api user"
+    username: "{{ api_token_id }}"
+    password: "{{ api_token_secret }}"
+    icon: "12"
+    notes: "The API token for the terraform proxmox user."
+  when: user_has_token.rc == 1
