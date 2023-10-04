@@ -1,6 +1,4 @@
-# CI in a Box Master Repo
-
-This is the working repo and drafting repo for the publishing on Github.
+# CI in a Box
 
 Welcome to the CI-in-a-Box project: A platform as a playground for testing CI pipelines with embedded devices.
 
